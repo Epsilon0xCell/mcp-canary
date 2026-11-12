@@ -108,17 +108,30 @@ class StdioTransport:
     def _send(self, payload):
         if self._proc is None or self._proc.stdin is None:
             raise MCPError("stdio transport is not running")
-        self._proc.stdin.write(json.dumps(payload) + "\n")
-        self._proc.stdin.flush()
+        try:
+            self._proc.stdin.write(json.dumps(payload) + "\n")
+            self._proc.stdin.flush()
+        except OSError as exc:
+            raise MCPError(
+                "stdio transport failed to send (server process gone?): %s"
+                % exc
+            )
 
     def close(self):
         if self._proc is not None:
+            proc = self._proc
             try:
-                self._proc.terminate()
-                self._proc.wait(timeout=3)
+                proc.terminate()
+                proc.wait(timeout=3)
             except Exception:
                 try:
-                    self._proc.kill()
+                    proc.kill()
+                except Exception:
+                    pass
+            for stream in (proc.stdin, proc.stdout):
+                try:
+                    if stream is not None:
+                        stream.close()
                 except Exception:
                     pass
             self._proc = None
